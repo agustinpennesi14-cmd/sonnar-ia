@@ -20,3 +20,4 @@ Inteligencia Artificial
 Text-to-Speech
 Impresión 3D
 C++
+<img width="784" height="1168" alt="image" src="https://github.com/user-attachments/assets/1a57e43c-2a3f-483a-a0b8-1eb466b19444" />
