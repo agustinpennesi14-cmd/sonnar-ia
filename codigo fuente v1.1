@@ -1,0 +1,604 @@
+#include <Arduino.h>
+#include "esp_camera.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include "mbedtls/base64.h"
+
+// =====================================================
+// WIFI
+// =====================================================
+
+const char *ssid = "Estudiantes";
+const char *password = "educar_2018";
+
+// =====================================================
+// GEMINI
+// =====================================================
+
+const char *API_KEY = "AQ.Ab8RN6JhtbO3aSi7M9ZpKLZXitH38a6WcudjINc52-D6oBc1OA";
+
+const char *GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/"
+  "gemini-3.6-flash:generateContent";
+
+// =====================================================
+// PINES ESP32-CAM AI-THINKER
+// =====================================================
+
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+// =====================================================
+// LED FLASH
+// =====================================================
+
+#define FLASH_LED_GPIO     4
+
+// =====================================================
+// CAPTURAR Y ENVIAR A GEMINI
+// =====================================================
+
+void capturarYEnviarAGemini() {
+
+  Serial.println();
+  Serial.println("================================");
+  Serial.println("       ESCANEO CON GEMINI");
+  Serial.println("================================");
+
+  // ---------------------------------------------------
+  // CAPTURA
+  // ---------------------------------------------------
+
+  camera_fb_t *fb = esp_camera_fb_get();
+
+  if (!fb) {
+    Serial.println("ERROR: no se pudo capturar la imagen.");
+    return;
+  }
+
+  Serial.println("CAPTURA EXITOSA");
+
+  Serial.print("Ancho: ");
+  Serial.println(fb->width);
+
+  Serial.print("Alto: ");
+  Serial.println(fb->height);
+
+  Serial.print("JPEG: ");
+  Serial.print(fb->len);
+  Serial.println(" bytes");
+
+  // ---------------------------------------------------
+  // CALCULAR TAMAÑO BASE64
+  // ---------------------------------------------------
+
+  size_t base64_len = 0;
+
+  int resultado = mbedtls_base64_encode(
+    NULL,
+    0,
+    &base64_len,
+    fb->buf,
+    fb->len
+  );
+
+  if (resultado != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL &&
+      resultado != 0) {
+
+    Serial.print("ERROR calculando Base64. Codigo: ");
+    Serial.println(resultado);
+
+    esp_camera_fb_return(fb);
+    return;
+  }
+
+  Serial.print("Base64 necesario: ");
+  Serial.println(base64_len);
+
+  // ---------------------------------------------------
+  // RESERVAR MEMORIA
+  // ---------------------------------------------------
+
+  unsigned char *base64 =
+    (unsigned char *)malloc(base64_len + 1);
+
+  if (!base64) {
+
+    Serial.println("ERROR: no hay memoria para Base64.");
+
+    esp_camera_fb_return(fb);
+    return;
+  }
+
+  // ---------------------------------------------------
+  // JPEG -> BASE64
+  // ---------------------------------------------------
+
+  resultado = mbedtls_base64_encode(
+    base64,
+    base64_len + 1,
+    &base64_len,
+    fb->buf,
+    fb->len
+  );
+
+  if (resultado != 0) {
+
+    Serial.print("ERROR convirtiendo a Base64. Codigo: ");
+    Serial.println(resultado);
+
+    free(base64);
+    esp_camera_fb_return(fb);
+
+    return;
+  }
+
+  base64[base64_len] = '\0';
+
+  Serial.println("JPEG -> BASE64: OK");
+
+  Serial.print("Caracteres Base64: ");
+  Serial.println(base64_len);
+
+  // ---------------------------------------------------
+  // LIBERAR FRAME DE CÁMARA
+  // ---------------------------------------------------
+
+  esp_camera_fb_return(fb);
+
+  Serial.println("Frame de camara liberado.");
+
+  // ---------------------------------------------------
+  // CONEXIÓN HTTPS
+  // ---------------------------------------------------
+
+  WiFiClientSecure client;
+
+  // Para esta prueba.
+  client.setInsecure();
+
+  HTTPClient http;
+
+  Serial.println();
+  Serial.println("Conectando con Gemini...");
+
+  if (!http.begin(client, GEMINI_URL)) {
+
+    Serial.println("ERROR: no se pudo iniciar HTTP.");
+
+    free(base64);
+    return;
+  }
+
+  http.addHeader("x-goog-api-key", API_KEY);
+  http.addHeader("Content-Type", "application/json");
+
+  http.setTimeout(120000);
+
+  // ---------------------------------------------------
+  // CREAR JSON
+  // ---------------------------------------------------
+
+  DynamicJsonDocument requestDoc(16000);
+
+  JsonArray contents =
+    requestDoc.createNestedArray("contents");
+
+  JsonObject content =
+    contents.createNestedObject();
+
+  JsonArray parts =
+    content.createNestedArray("parts");
+
+  // ---------------------------------------------------
+  // PREGUNTA
+  // ---------------------------------------------------
+
+  JsonObject textPart =
+    parts.createNestedObject();
+
+  textPart["text"] =
+    "¿Qué objeto aparece en esta imagen? "
+    "Respondé solamente con el nombre del los objetos y algunos detalles de los objetos si es que hay más de uno., "
+    "de forma precisa y en español argentino.";
+    "Su respuesta debe ser de forma que le indique bien al usuario que es lo que se esta escaneando sin mencionar el espacio exterior del objeto .";
+
+  // ---------------------------------------------------
+  // IMAGEN
+  // ---------------------------------------------------
+
+  JsonObject imagePart =
+    parts.createNestedObject();
+
+  JsonObject inlineData =
+    imagePart.createNestedObject("inline_data");
+
+  inlineData["mime_type"] = "image/jpeg";
+  inlineData["data"] = (const char *)base64;
+
+  // ---------------------------------------------------
+  // CONFIGURACIÓN GEMINI
+  // ---------------------------------------------------
+
+  JsonObject generationConfig =
+    requestDoc.createNestedObject("generationConfig");
+
+  JsonObject thinkingConfig =
+    generationConfig.createNestedObject("thinkingConfig");
+
+  thinkingConfig["thinkingLevel"] = "low";
+
+  // ---------------------------------------------------
+  // SERIALIZAR
+  // ---------------------------------------------------
+
+  String requestBody;
+
+  serializeJson(
+    requestDoc,
+    requestBody
+  );
+
+  Serial.println();
+  Serial.println("JSON preparado.");
+
+  Serial.print("Tamano de solicitud: ");
+  Serial.print(requestBody.length());
+  Serial.println(" bytes");
+
+  // ---------------------------------------------------
+  // ENVIAR
+  // ---------------------------------------------------
+
+  Serial.println("Enviando imagen a Gemini...");
+
+  unsigned long inicio = millis();
+
+  int httpCode =
+    http.POST(requestBody);
+
+  unsigned long tiempo =
+    millis() - inicio;
+
+  Serial.println();
+
+  Serial.print("Tiempo de respuesta: ");
+  Serial.print(tiempo);
+  Serial.println(" ms");
+
+  Serial.print("HTTP: ");
+  Serial.println(httpCode);
+
+  // ---------------------------------------------------
+  // RESPUESTA
+  // ---------------------------------------------------
+
+  if (httpCode > 0) {
+
+    String response =
+      http.getString();
+
+    Serial.println();
+    Serial.println("RESPUESTA DE GEMINI:");
+    Serial.println("--------------------------------");
+
+    Serial.println(response);
+
+    Serial.println("--------------------------------");
+
+    // -------------------------------------------------
+    // PARSEAR RESPUESTA JSON
+    // -------------------------------------------------
+
+    DynamicJsonDocument responseDoc(12000);
+
+    DeserializationError error =
+      deserializeJson(
+        responseDoc,
+        response
+      );
+
+    if (!error) {
+
+      const char *texto =
+        responseDoc["candidates"][0]
+                   ["content"]
+                   ["parts"][0]
+                   ["text"];
+
+      if (texto) {
+
+        Serial.println();
+        Serial.println("================================");
+        Serial.println("       OBJETO DETECTADO");
+        Serial.println("================================");
+
+        Serial.println(texto);
+
+        Serial.println("================================");
+
+      } else {
+
+        Serial.println();
+        Serial.println(
+          "No se encontro texto en la respuesta."
+        );
+      }
+
+    } else {
+
+      Serial.print(
+        "ERROR parseando respuesta JSON: "
+      );
+
+      Serial.println(
+        error.c_str()
+      );
+    }
+
+  } else {
+
+    Serial.print(
+      "ERROR HTTP: "
+    );
+
+    Serial.println(
+      http.errorToString(httpCode)
+    );
+  }
+
+  // ---------------------------------------------------
+  // LIMPIEZA
+  // ---------------------------------------------------
+
+  http.end();
+
+  free(base64);
+
+  Serial.println();
+  Serial.println("Memoria liberada.");
+  Serial.println("================================");
+}
+
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // ===================================================
+  // LED DE FLASH
+  // ===================================================
+
+  pinMode(FLASH_LED_GPIO, OUTPUT);
+
+  // Encender LED permanentemente
+  digitalWrite(FLASH_LED_GPIO, HIGH);
+
+  Serial.setDebugOutput(true);
+
+  Serial.println();
+
+  Serial.println("LED de flash encendido.");
+
+
+  // ===================================================
+  // CONFIGURACIÓN DE CÁMARA
+  // ===================================================
+
+  camera_config_t config;
+
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+
+  config.pin_xclk = XCLK_GPIO_NUM;
+
+  config.pin_pclk = PCLK_GPIO_NUM;
+
+  config.pin_vsync = VSYNC_GPIO_NUM;
+
+  config.pin_href = HREF_GPIO_NUM;
+
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+
+  config.pin_pwdn = PWDN_GPIO_NUM;
+
+  config.pin_reset = RESET_GPIO_NUM;
+
+  config.xclk_freq_hz = 20000000;
+
+  config.frame_size = FRAMESIZE_UXGA;
+
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  config.grab_mode =
+    CAMERA_GRAB_WHEN_EMPTY;
+
+  config.fb_location =
+    CAMERA_FB_IN_PSRAM;
+
+  config.jpeg_quality = 12;
+
+  config.fb_count = 1;
+
+
+  // ===================================================
+  // PSRAM
+  // ===================================================
+
+  if (psramFound()) {
+
+    config.jpeg_quality = 10;
+
+    config.fb_count = 2;
+
+    config.grab_mode =
+      CAMERA_GRAB_LATEST;
+
+  } else {
+
+    config.frame_size =
+      FRAMESIZE_SVGA;
+
+    config.fb_location =
+      CAMERA_FB_IN_DRAM;
+  }
+
+
+  // ===================================================
+  // INICIAR CÁMARA
+  // ===================================================
+
+  esp_err_t err =
+    esp_camera_init(&config);
+
+  if (err != ESP_OK) {
+
+    Serial.printf(
+      "Camera init failed with error 0x%x\n",
+      err
+    );
+
+    return;
+  }
+
+  Serial.println(
+    "Camara iniciada correctamente."
+  );
+
+
+  sensor_t *s =
+    esp_camera_sensor_get();
+
+
+  // ===================================================
+  // QVGA
+  // ===================================================
+
+  s->set_framesize(
+    s,
+    FRAMESIZE_QVGA
+  );
+
+
+  // ===================================================
+  // WIFI
+  // ===================================================
+
+  WiFi.begin(
+    ssid,
+    password
+  );
+
+  WiFi.setSleep(false);
+
+  Serial.print(
+    "WiFi connecting"
+  );
+
+  while (
+    WiFi.status() != WL_CONNECTED
+  ) {
+
+    delay(500);
+
+    Serial.print(".");
+  }
+
+  Serial.println();
+
+  Serial.println(
+    "WiFi connected"
+  );
+
+  Serial.print(
+    "IP: "
+  );
+
+  Serial.println(
+    WiFi.localIP()
+  );
+
+
+  // ===================================================
+  // INSTRUCCIONES
+  // ===================================================
+
+  Serial.println();
+
+  Serial.println(
+    "================================"
+  );
+
+  Serial.println(
+    "Escribi 'c' en el monitor serie"
+  );
+
+  Serial.println(
+    "para capturar y enviar la imagen"
+  );
+
+  Serial.println(
+    "a Gemini."
+  );
+
+  Serial.println(
+    "================================"
+  );
+}
+
+
+// =====================================================
+// LOOP
+// =====================================================
+
+void loop() {
+
+  if (Serial.available()) {
+
+    char comando =
+      Serial.read();
+
+    if (
+      comando == 'c' ||
+      comando == 'C'
+    ) {
+
+      capturarYEnviarAGemini();
+    }
+  }
+
+  delay(10);
+}
