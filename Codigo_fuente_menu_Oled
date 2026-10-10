@@ -1,0 +1,1532 @@
+/****************************************************
+ *
+ *              SONNAR IA
+ *          INTERFAZ OLED 0.91"
+ *
+ * OLED SSD1306 128x32
+ *
+ * SDA  -> GPIO 13
+ * SCL  -> GPIO 14
+ *
+ * BOTONES
+ * UP    -> GPIO 2
+ * DOWN  -> GPIO 12
+ * ENTER -> GPIO 16
+ *
+ ****************************************************/
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <math.h>
+
+
+// ==================================================
+// OLED
+// ==================================================
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+
+#define OLED_SDA 13
+#define OLED_SCL 14
+#define OLED_ADDR 0x3C
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  -1
+);
+
+
+// ==================================================
+// BOTONES
+// ==================================================
+
+#define BTN_UP     2
+#define BTN_DOWN   12
+#define BTN_ENTER  16
+
+
+// ==================================================
+// MENÚ
+// ==================================================
+
+const char* menuItems[] = {
+  "ESCANEAR",
+  "VOLUMEN",
+  "SISTEMA",
+  "ACERCA"
+};
+
+const int menuCount = 4;
+
+int selected = 0;
+
+
+// ==================================================
+// VARIABLES
+// ==================================================
+
+int volumen = 80;
+
+bool invertido = false;
+
+unsigned long tiempoEscaneo = 0;
+
+int frameEscaneo = 0;
+
+
+// ==================================================
+// ESTADOS
+// ==================================================
+
+enum Estado {
+
+  INICIO,
+
+  MENU,
+
+  ESCANEAR,
+
+  REPRODUCIENDO,
+
+  VOLUMEN,
+
+  SISTEMA,
+
+  ACERCA
+};
+
+Estado estado = INICIO;
+
+
+// ==================================================
+// SETUP
+// ==================================================
+
+void setup() {
+
+  Serial.begin(115200);
+
+  Serial.println();
+  Serial.println("==============================");
+  Serial.println("       SONNAR IA");
+  Serial.println("==============================");
+
+
+  // ------------------------------
+  // I2C
+  // ------------------------------
+
+  Wire.begin(
+    OLED_SDA,
+    OLED_SCL
+  );
+
+
+  // ------------------------------
+  // OLED
+  // ------------------------------
+
+  if (!display.begin(
+        SSD1306_SWITCHCAPVCC,
+        OLED_ADDR
+      )) {
+
+    Serial.println("ERROR OLED");
+
+    while (true) {
+      delay(100);
+    }
+  }
+
+
+  display.clearDisplay();
+  display.display();
+
+
+  // ------------------------------
+  // BOTONES
+  // ------------------------------
+
+  pinMode(
+    BTN_UP,
+    INPUT_PULLUP
+  );
+
+  pinMode(
+    BTN_DOWN,
+    INPUT_PULLUP
+  );
+
+  pinMode(
+    BTN_ENTER,
+    INPUT_PULLUP
+  );
+
+
+  // ------------------------------
+  // ANIMACIÓN INICIAL
+  // ------------------------------
+
+  animacionInicio();
+
+
+  // ------------------------------
+  // MENÚ
+  // ------------------------------
+
+  estado = MENU;
+
+  mostrarMenu();
+}
+
+
+// ==================================================
+// LOOP PRINCIPAL
+// ==================================================
+
+void loop() {
+
+  switch (estado) {
+
+    case MENU:
+      menuLoop();
+      break;
+
+
+    case ESCANEAR:
+      escanearLoop();
+      break;
+
+
+    case REPRODUCIENDO:
+      // El estado se maneja automáticamente
+      break;
+
+
+    case VOLUMEN:
+      volumenLoop();
+      break;
+
+
+    case SISTEMA:
+      sistemaLoop();
+      break;
+
+
+    case ACERCA:
+
+      if (digitalRead(BTN_ENTER) == LOW) {
+
+        esperarSoltar(BTN_ENTER);
+
+        animacionSalida();
+
+        estado = MENU;
+
+        mostrarMenu();
+      }
+
+      break;
+
+
+    case INICIO:
+      break;
+  }
+}
+
+
+// ==================================================
+// ANIMACIÓN DE INICIO
+// ==================================================
+
+void animacionInicio() {
+
+  display.clearDisplay();
+
+  // --------------------------------
+  // Punto inicial
+  // --------------------------------
+
+  display.fillCircle(
+    64,
+    16,
+    2,
+    SSD1306_WHITE
+  );
+
+  display.display();
+
+  delay(300);
+
+
+  // --------------------------------
+  // Expandir punto
+  // --------------------------------
+
+  for (int r = 2; r <= 10; r += 2) {
+
+    display.clearDisplay();
+
+    display.drawCircle(
+      64,
+      16,
+      r,
+      SSD1306_WHITE
+    );
+
+    display.display();
+
+    delay(50);
+  }
+
+
+  // --------------------------------
+  // Texto letra por letra
+  // --------------------------------
+
+  const char* texto = "SONNAR IA";
+
+  display.clearDisplay();
+
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+
+  int16_t x1;
+  int16_t y1;
+
+  uint16_t w;
+  uint16_t h;
+
+  display.getTextBounds(
+    texto,
+    0,
+    0,
+    &x1,
+    &y1,
+    &w,
+    &h
+  );
+
+  int x = (128 - w) / 2;
+
+  for (int i = 1; i <= 9; i++) {
+
+    display.clearDisplay();
+
+    char buffer[12];
+
+    strncpy(
+      buffer,
+      texto,
+      i
+    );
+
+    buffer[i] = '\0';
+
+    display.setCursor(
+      x,
+      9
+    );
+
+    display.print(buffer);
+
+    display.display();
+
+    delay(90);
+  }
+
+
+  // --------------------------------
+  // Línea inferior
+  // --------------------------------
+
+  for (int i = 0; i <= 128; i += 4) {
+
+    display.clearDisplay();
+
+    display.setTextSize(2);
+
+    display.setCursor(
+      x,
+      5
+    );
+
+    display.print("SONNAR IA");
+
+    display.drawLine(
+      0,
+      27,
+      i,
+      27,
+      SSD1306_WHITE
+    );
+
+    display.display();
+
+    delay(20);
+  }
+
+
+  delay(500);
+}
+
+
+// ==================================================
+// MENÚ PRINCIPAL
+// ==================================================
+
+void mostrarMenu() {
+
+  display.clearDisplay();
+
+
+  // --------------------------------
+  // Título
+  // --------------------------------
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(
+    38,
+    0
+  );
+
+  display.print("SONNAR IA");
+
+
+  // --------------------------------
+  // Línea
+  // --------------------------------
+
+  display.drawLine(
+    0,
+    9,
+    127,
+    9,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Texto seleccionado
+  // --------------------------------
+
+  display.setTextSize(2);
+
+  int16_t x1;
+  int16_t y1;
+
+  uint16_t w;
+  uint16_t h;
+
+  display.getTextBounds(
+    menuItems[selected],
+    0,
+    0,
+    &x1,
+    &y1,
+    &w,
+    &h
+  );
+
+  int x = (128 - w) / 2;
+
+  display.setCursor(
+    x,
+    12
+  );
+
+  display.print(
+    menuItems[selected]
+  );
+
+
+  // --------------------------------
+  // Indicador de posición
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  char posicion[8];
+
+  sprintf(
+    posicion,
+    "%d/4",
+    selected + 1
+  );
+
+  display.setCursor(
+    111,
+    0
+  );
+
+  display.print(posicion);
+
+
+  display.display();
+}
+
+
+// ==================================================
+// LOOP DEL MENÚ
+// ==================================================
+
+void menuLoop() {
+
+  // --------------------------------
+  // UP
+  // --------------------------------
+
+  if (digitalRead(BTN_UP) == LOW) {
+
+    esperarSoltar(BTN_UP);
+
+    int anterior = selected;
+
+    selected--;
+
+    if (selected < 0) {
+      selected = menuCount - 1;
+    }
+
+    animacionCambioMenu(
+      anterior,
+      selected,
+      false
+    );
+  }
+
+
+  // --------------------------------
+  // DOWN
+  // --------------------------------
+
+  if (digitalRead(BTN_DOWN) == LOW) {
+
+    esperarSoltar(BTN_DOWN);
+
+    int anterior = selected;
+
+    selected++;
+
+    if (selected >= menuCount) {
+      selected = 0;
+    }
+
+    animacionCambioMenu(
+      anterior,
+      selected,
+      true
+    );
+  }
+
+
+  // --------------------------------
+  // ENTER
+  // --------------------------------
+
+  if (digitalRead(BTN_ENTER) == LOW) {
+
+    esperarSoltar(BTN_ENTER);
+
+    animacionEntrada();
+
+
+    switch (selected) {
+
+      case 0:
+
+        estado = ESCANEAR;
+
+        iniciarEscaneo();
+
+        break;
+
+
+      case 1:
+
+        estado = VOLUMEN;
+
+        mostrarVolumen();
+
+        break;
+
+
+      case 2:
+
+        estado = SISTEMA;
+
+        mostrarSistema();
+
+        break;
+
+
+      case 3:
+
+        estado = ACERCA;
+
+        mostrarAcerca();
+
+        break;
+    }
+  }
+}
+
+
+// ==================================================
+// ANIMACIÓN CAMBIO DE MENÚ
+// ==================================================
+
+void animacionCambioMenu(
+  int anterior,
+  int nuevo,
+  bool haciaAbajo
+) {
+
+  const int pasos = 6;
+
+  for (int desplazamiento = 0;
+       desplazamiento <= 16;
+       desplazamiento += 4) {
+
+    display.clearDisplay();
+
+
+    // --------------------------------
+    // Título
+    // --------------------------------
+
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+
+    display.setCursor(
+      38,
+      0
+    );
+
+    display.print("SONNAR IA");
+
+
+    display.drawLine(
+      0,
+      9,
+      127,
+      9,
+      SSD1306_WHITE
+    );
+
+
+    // --------------------------------
+    // Texto anterior
+    // --------------------------------
+
+    display.setTextSize(2);
+
+    int16_t x1;
+    int16_t y1;
+
+    uint16_t w;
+    uint16_t h;
+
+
+    display.getTextBounds(
+      menuItems[anterior],
+      0,
+      0,
+      &x1,
+      &y1,
+      &w,
+      &h
+    );
+
+    int xAnterior =
+      (128 - w) / 2;
+
+
+    int yAnterior;
+
+    if (haciaAbajo) {
+
+      yAnterior =
+        12 - desplazamiento;
+
+    } else {
+
+      yAnterior =
+        12 + desplazamiento;
+    }
+
+
+    display.setCursor(
+      xAnterior,
+      yAnterior
+    );
+
+    display.print(
+      menuItems[anterior]
+    );
+
+
+    // --------------------------------
+    // Texto nuevo
+    // --------------------------------
+
+    display.getTextBounds(
+      menuItems[nuevo],
+      0,
+      0,
+      &x1,
+      &y1,
+      &w,
+      &h
+    );
+
+    int xNuevo =
+      (128 - w) / 2;
+
+
+    int yNuevo;
+
+    if (haciaAbajo) {
+
+      yNuevo =
+        12 + 16 - desplazamiento;
+
+    } else {
+
+      yNuevo =
+        12 - 16 + desplazamiento;
+    }
+
+
+    display.setCursor(
+      xNuevo,
+      yNuevo
+    );
+
+    display.print(
+      menuItems[nuevo]
+    );
+
+
+    // --------------------------------
+    // Posición
+    // --------------------------------
+
+    display.setTextSize(1);
+
+    char posicion[8];
+
+    sprintf(
+      posicion,
+      "%d/4",
+      nuevo + 1
+    );
+
+    display.setCursor(
+      111,
+      0
+    );
+
+    display.print(posicion);
+
+
+    display.display();
+
+    delay(25);
+  }
+
+
+  mostrarMenu();
+}
+
+
+// ==================================================
+// ANIMACIÓN ENTRADA
+// ==================================================
+
+void animacionEntrada() {
+
+  for (int i = 0; i < 3; i++) {
+
+    display.invertDisplay(true);
+
+    delay(60);
+
+    display.invertDisplay(false);
+
+    delay(60);
+  }
+}
+
+
+// ==================================================
+// ANIMACIÓN SALIDA
+// ==================================================
+
+void animacionSalida() {
+
+  for (int i = 0; i < 2; i++) {
+
+    display.invertDisplay(true);
+
+    delay(60);
+
+    display.invertDisplay(false);
+
+    delay(60);
+  }
+}
+
+
+// ==================================================
+// ESCANEO
+// ==================================================
+
+void iniciarEscaneo() {
+
+  tiempoEscaneo = millis();
+
+  frameEscaneo = 0;
+
+  mostrarEscaneando();
+}
+
+
+// ==================================================
+// LOOP ESCANEO
+// ==================================================
+
+void escanearLoop() {
+
+  unsigned long tiempo =
+    millis() - tiempoEscaneo;
+
+
+  // --------------------------------
+  // Simulación de 4 segundos
+  // --------------------------------
+
+  if (tiempo < 4000) {
+
+    frameEscaneo++;
+
+    mostrarEscaneando();
+
+    delay(80);
+
+  } else {
+
+    estado = REPRODUCIENDO;
+
+    animacionReproduciendo();
+  }
+}
+
+
+// ==================================================
+// PANTALLA ESCANEANDO
+// ==================================================
+
+void mostrarEscaneando() {
+
+  display.clearDisplay();
+
+  display.setTextColor(
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Texto
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    25,
+    1
+  );
+
+  display.print(
+    "ESCANEANDO"
+  );
+
+
+  // --------------------------------
+  // Círculo
+  // --------------------------------
+
+  int cx = 64;
+  int cy = 21;
+
+  int radio = 8;
+
+  display.drawCircle(
+    cx,
+    cy,
+    radio,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Manecilla
+  // --------------------------------
+
+  float angulo =
+    frameEscaneo * 0.35;
+
+  int x2 =
+    cx +
+    cos(angulo) * 6;
+
+  int y2 =
+    cy +
+    sin(angulo) * 6;
+
+
+  display.drawLine(
+    cx,
+    cy,
+    x2,
+    y2,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Punto central
+  // --------------------------------
+
+  display.fillCircle(
+    cx,
+    cy,
+    1,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Puntos animados
+  // --------------------------------
+
+  int puntos =
+    (frameEscaneo / 4) % 4;
+
+
+  display.setCursor(
+    90,
+    18
+  );
+
+  for (int i = 0; i < puntos; i++) {
+
+    display.print(".");
+  }
+
+
+  display.display();
+}
+
+
+// ==================================================
+// REPRODUCIENDO
+// ==================================================
+
+void animacionReproduciendo() {
+
+  for (int i = 0; i < 4; i++) {
+
+    display.clearDisplay();
+
+
+    display.setTextColor(
+      SSD1306_WHITE
+    );
+
+
+    // --------------------------------
+    // Texto
+    // --------------------------------
+
+    display.setTextSize(1);
+
+    display.setCursor(
+      20,
+      3
+    );
+
+    display.print(
+      "REPRODUCIENDO"
+    );
+
+
+    // --------------------------------
+    // Nota musical
+    // --------------------------------
+
+    display.setTextSize(2);
+
+    if (i % 2 == 0) {
+
+      display.setCursor(
+        57,
+        15
+      );
+
+      display.print(
+        "♪"
+      );
+
+    } else {
+
+      display.setCursor(
+        57,
+        14
+      );
+
+      display.print(
+        "♫"
+      );
+    }
+
+
+    display.display();
+
+    delay(250);
+  }
+
+
+  mostrarReproduciendo();
+
+  delay(1200);
+
+
+  // --------------------------------
+  // Volver al menú
+  // --------------------------------
+
+  estado = MENU;
+
+  mostrarMenu();
+}
+
+
+// ==================================================
+// PANTALLA REPRODUCIENDO
+// ==================================================
+
+void mostrarReproduciendo() {
+
+  display.clearDisplay();
+
+  display.setTextColor(
+    SSD1306_WHITE
+  );
+
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    20,
+    3
+  );
+
+  display.print(
+    "REPRODUCIENDO"
+  );
+
+
+  display.setTextSize(2);
+
+  display.setCursor(
+    57,
+    14
+  );
+
+  display.print(
+    "♫"
+  );
+
+
+  display.display();
+}
+
+
+// ==================================================
+// VOLUMEN
+// ==================================================
+
+void mostrarVolumen() {
+
+  display.clearDisplay();
+
+
+  // --------------------------------
+  // Título
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    45,
+    0
+  );
+
+  display.print(
+    "VOLUMEN"
+  );
+
+
+  // --------------------------------
+  // Porcentaje
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  char texto[8];
+
+  sprintf(
+    texto,
+    "%d%%",
+    volumen
+  );
+
+  display.setCursor(
+    54,
+    9
+  );
+
+  display.print(texto);
+
+
+  // --------------------------------
+  // Barra
+  // --------------------------------
+
+  display.drawRoundRect(
+    8,
+    18,
+    112,
+    10,
+    3,
+    SSD1306_WHITE
+  );
+
+
+  int ancho =
+    map(
+      volumen,
+      0,
+      100,
+      0,
+      108
+    );
+
+
+  if (ancho > 0) {
+
+    display.fillRoundRect(
+      10,
+      20,
+      ancho,
+      6,
+      2,
+      SSD1306_WHITE
+    );
+  }
+
+
+  display.display();
+}
+
+
+// ==================================================
+// LOOP VOLUMEN
+// ==================================================
+
+void volumenLoop() {
+
+  // --------------------------------
+  // SUBIR
+  // --------------------------------
+
+  if (digitalRead(BTN_UP) == LOW) {
+
+    esperarSoltar(BTN_UP);
+
+    volumen += 10;
+
+    if (volumen > 100) {
+      volumen = 100;
+    }
+
+    animacionVolumen();
+  }
+
+
+  // --------------------------------
+  // BAJAR
+  // --------------------------------
+
+  if (digitalRead(BTN_DOWN) == LOW) {
+
+    esperarSoltar(BTN_DOWN);
+
+    volumen -= 10;
+
+    if (volumen < 0) {
+      volumen = 0;
+    }
+
+    animacionVolumen();
+  }
+
+
+  // --------------------------------
+  // ENTER
+  // --------------------------------
+
+  if (digitalRead(BTN_ENTER) == LOW) {
+
+    esperarSoltar(BTN_ENTER);
+
+    animacionSalida();
+
+    estado = MENU;
+
+    mostrarMenu();
+  }
+}
+
+
+// ==================================================
+// ANIMACIÓN VOLUMEN
+// ==================================================
+
+void animacionVolumen() {
+
+  display.clearDisplay();
+
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    45,
+    0
+  );
+
+  display.print(
+    "VOLUMEN"
+  );
+
+
+  char texto[8];
+
+  sprintf(
+    texto,
+    "%d%%",
+    volumen
+  );
+
+
+  display.setCursor(
+    54,
+    9
+  );
+
+  display.print(texto);
+
+
+  // --------------------------------
+  // Barra animada
+  // --------------------------------
+
+  display.drawRoundRect(
+    8,
+    18,
+    112,
+    10,
+    3,
+    SSD1306_WHITE
+  );
+
+
+  int objetivo =
+    map(
+      volumen,
+      0,
+      100,
+      0,
+      108
+    );
+
+
+  for (
+    int ancho = 0;
+    ancho <= objetivo;
+    ancho += 4
+  ) {
+
+    display.fillRoundRect(
+      10,
+      20,
+      ancho,
+      6,
+      2,
+      SSD1306_WHITE
+    );
+
+    display.display();
+
+    delay(10);
+  }
+}
+
+
+// ==================================================
+// SISTEMA
+// ==================================================
+
+void mostrarSistema() {
+
+  display.clearDisplay();
+
+
+  // --------------------------------
+  // Título
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    43,
+    0
+  );
+
+  display.print(
+    "SISTEMA"
+  );
+
+
+  // --------------------------------
+  // Línea
+  // --------------------------------
+
+  display.drawLine(
+    0,
+    9,
+    127,
+    9,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Estado
+  // --------------------------------
+
+  display.setTextSize(2);
+
+  const char* texto;
+
+  if (invertido) {
+
+    texto = "INVERTIDO";
+
+  } else {
+
+    texto = "NORMAL";
+  }
+
+
+  int16_t x1;
+  int16_t y1;
+
+  uint16_t w;
+  uint16_t h;
+
+
+  display.getTextBounds(
+    texto,
+    0,
+    0,
+    &x1,
+    &y1,
+    &w,
+    &h
+  );
+
+
+  int x =
+    (128 - w) / 2;
+
+
+  display.setCursor(
+    x,
+    13
+  );
+
+  display.print(texto);
+
+
+  display.display();
+}
+
+
+// ==================================================
+// LOOP SISTEMA
+// ==================================================
+
+void sistemaLoop() {
+
+  // --------------------------------
+  // UP
+  // --------------------------------
+
+  if (digitalRead(BTN_UP) == LOW) {
+
+    esperarSoltar(BTN_UP);
+
+    invertido = !invertido;
+
+    display.invertDisplay(
+      invertido
+    );
+
+    mostrarSistema();
+  }
+
+
+  // --------------------------------
+  // DOWN
+  // --------------------------------
+
+  if (digitalRead(BTN_DOWN) == LOW) {
+
+    esperarSoltar(BTN_DOWN);
+
+    invertido = !invertido;
+
+    display.invertDisplay(
+      invertido
+    );
+
+    mostrarSistema();
+  }
+
+
+  // --------------------------------
+  // ENTER
+  // --------------------------------
+
+  if (digitalRead(BTN_ENTER) == LOW) {
+
+    esperarSoltar(BTN_ENTER);
+
+    animacionSalida();
+
+    estado = MENU;
+
+    mostrarMenu();
+  }
+}
+
+
+// ==================================================
+// ACERCA DE
+// ==================================================
+
+void mostrarAcerca() {
+
+  display.clearDisplay();
+
+
+  // --------------------------------
+  // SONNAR IA
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    42,
+    0
+  );
+
+  display.print(
+    "SONNAR IA"
+  );
+
+
+  // --------------------------------
+  // Línea
+  // --------------------------------
+
+  display.drawLine(
+    0,
+    9,
+    127,
+    9,
+    SSD1306_WHITE
+  );
+
+
+  // --------------------------------
+  // Versión
+  // --------------------------------
+
+  display.setTextSize(1);
+
+  display.setCursor(
+    48,
+    13
+  );
+
+  display.print(
+    "v1.0"
+  );
+
+
+  // --------------------------------
+  // IAC
+  // --------------------------------
+
+  display.setCursor(
+    57,
+    23
+  );
+
+  display.print(
+    "IAC"
+  );
+
+
+  display.display();
+}
+
+
+// ==================================================
+// ESPERAR SOLTAR BOTÓN
+// ==================================================
+
+void esperarSoltar(
+  int boton
+) {
+
+  delay(30);
+
+  while (
+    digitalRead(boton) == LOW
+  ) {
+
+    delay(5);
+  }
+
+  delay(30);
+}
