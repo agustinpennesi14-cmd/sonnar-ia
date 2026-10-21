@@ -79,6 +79,13 @@ String analizarConGemini(
   Serial.println("================================");
   Serial.println("         ESCANEO CON GEMINI");
   Serial.println("================================");
+
+  if (API_KEY.length() < 20) {
+    Serial.println("[GEMINI] No hay una API Key configurada.");
+    Serial.println("[GEMINI] Abri Sistema > Wi-Fi y cargala desde el portal.");
+    tiempoFinGemini = millis();
+    return "";
+  }
   // ===================================================
   // PROMPT
   // ===================================================
@@ -146,7 +153,7 @@ String analizarConGemini(
     "v1beta/models/" +
     String(GEMINI_MODEL) +
     ":generateContent?key=" +
-    String(API_KEY);
+    API_KEY;
   // ===================================================
   // INICIO DE MEDICION
   // ===================================================
