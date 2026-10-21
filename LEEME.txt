@@ -1,0 +1,31 @@
+SONNAR IA v1.2 - VERSION MODULAR
+================================
+
+Esta carpeta contiene el sketch dividido en pestañas .ino para Arduino IDE 2.3.6.
+
+ARCHIVOS
+- Sonnar_IA.ino: includes, configuración, variables globales, setup() y loop().
+- 01_Memoria.ino: diagnóstico de memoria.
+- 02_Latencia.ino: medición e impresión de latencia.
+- 03_Audio.ino: MAX98357A, Google TTS y avisos.
+- 04_Camara.ino: inicialización y captura.
+- 05_WiFi.ino: conexión Wi-Fi.
+- 06_Gemini.ino: Base64 y comunicación con Gemini.
+- 07_Escaneo.ino: flujo completo de escaneo.
+
+IMPORTANTE
+1. La configuracion Wi-Fi se realiza desde el menu: Sistema > Wi-Fi.
+2. Sonnar IA crea una red temporal llamada SonnarIA-Setup. Conectate desde el celular con la clave SonnarIA2026 y abre http://192.168.4.1.
+3. En la pagina selecciona la red Wi-Fi habitual e ingresa la contrasena. La red se guarda en Preferences/NVS y se recupera al encender el equipo.
+4. Si la conexion falla, las credenciales guardadas anteriormente se conservan y podes volver a intentar desde Sistema > Wi-Fi.
+5. Antes de compilar, reemplaza PEGA_AQUI_TU_NUEVA_API_KEY por una clave nueva de Gemini. La clave anterior compartida quedó expuesta y no se conserva en esta copia por seguridad.
+6. Abri Sonnar_IA.ino desde esta carpeta. No cambies el nombre de la carpeta ni el archivo principal.
+7. Las pestañas son archivos .ino del mismo sketch; Arduino IDE las compila como una unidad.
+8. El portal usa HTTP local (sin cifrado), por lo que debe utilizarse solo en la red temporal de configuracion de Sonnar IA.
+
+Cambios de esta version:
+- Las credenciales Wi-Fi se guardan en memoria NVS mediante Preferences.
+- Si no hay Wi-Fi, el sistema ya no queda bloqueado durante el arranque.
+- El menu Sistema permite abrir el portal, revisar el estado de la camara o volver.
+- Se mantienen los modulos de camara, Gemini, audio y escaneo sin cambios intencionales en su logica.
+- Compilar y probar en el hardware antes de considerar la version validada.
