@@ -18,7 +18,7 @@ IMPORTANTE
 2. Sonnar IA crea una red temporal llamada SonnarIA-Setup. Conectate desde el celular con la clave SonnarIA2026 y abre http://192.168.4.1.
 3. En la pagina selecciona la red Wi-Fi habitual e ingresa la contrasena. La red se guarda en Preferences/NVS y se recupera al encender el equipo.
 4. Si la conexion falla, las credenciales guardadas anteriormente se conservan y podes volver a intentar desde Sistema > Wi-Fi.
-5. Antes de compilar, reemplaza PEGA_AQUI_TU_NUEVA_API_KEY por una clave nueva de Gemini. La clave anterior compartida quedó expuesta y no se conserva en esta copia por seguridad.
+5. La API Key de Gemini se configura desde el mismo portal web que el Wi-Fi. Entra a Sistema > Wi-Fi, conéctate a SonnarIA-Setup, abre http://192.168.4.1 y guarda primero la API Key. Luego selecciona la red Wi-Fi y pulsa Guardar y conectar. La clave queda en Preferences/NVS y no hace falta recompilar para cambiarla. La clave anterior compartida quedó expuesta: revócala y genera una nueva.
 6. Abri Sonnar_IA.ino desde esta carpeta. No cambies el nombre de la carpeta ni el archivo principal.
 7. Las pestañas son archivos .ino del mismo sketch; Arduino IDE las compila como una unidad.
 8. El portal usa HTTP local (sin cifrado), por lo que debe utilizarse solo en la red temporal de configuracion de Sonnar IA.
