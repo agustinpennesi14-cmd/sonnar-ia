@@ -74,6 +74,41 @@ bool guardarCredencialesWiFi(
 }
 
 // =====================================================
+// API KEY DE GEMINI: CARGAR / GUARDAR EN LA MISMA NVS
+// =====================================================
+
+bool cargarAPIKeyGemini() {
+  preferenciasWiFi.begin(WIFI_PREF_NAMESPACE, true);
+  API_KEY = preferenciasWiFi.getString("gemini", "");
+  preferenciasWiFi.end();
+
+  Serial.println(API_KEY.length() > 0
+    ? "[GEMINI] API Key cargada desde memoria."
+    : "[GEMINI] No hay API Key configurada.");
+
+  return API_KEY.length() > 0;
+}
+
+bool guardarAPIKeyGemini(const String& nuevaClave) {
+  if (nuevaClave.length() < 20 || nuevaClave.length() > 200) {
+    return false;
+  }
+
+  preferenciasWiFi.begin(WIFI_PREF_NAMESPACE, false);
+  size_t escrito = preferenciasWiFi.putString("gemini", nuevaClave);
+  preferenciasWiFi.end();
+
+  if (escrito == 0) {
+    Serial.println("[GEMINI] ERROR guardando API Key.");
+    return false;
+  }
+
+  API_KEY = nuevaClave;
+  Serial.println("[GEMINI] API Key guardada en memoria persistente.");
+  return true;
+}
+
+// =====================================================
 // CONECTAR A LA RED GUARDADA
 // =====================================================
 
@@ -166,7 +201,7 @@ void wifiRedirigirAlPortal() {
 
 void wifiEnviarPaginaPrincipal() {
   String pagina;
-  pagina.reserve(3500);
+  pagina.reserve(5200);
 
   pagina += F(
     "<!doctype html><html lang='es'><head>"
@@ -198,6 +233,15 @@ void wifiEnviarPaginaPrincipal() {
     "<input id='password' name='password' type='password' maxlength='63' autocomplete='current-password' placeholder='Contrasena de la red'>"
     "<button type='submit'>Guardar y conectar</button>"
     "</form>"
+    "<hr style='border:0;border-top:1px solid #526174;margin:24px 0'>"
+    "<h2 style='font-size:20px'>API de Gemini</h2>"
+    "<p>Ingresa una API Key nueva para cambiar la clave utilizada en los escaneos. La clave actual nunca se muestra.</p>"
+    "<form id='formApi'>"
+    "<label for='apiKey'>API Key de Gemini</label>"
+    "<input id='apiKey' name='apiKey' type='password' maxlength='200' autocomplete='off' placeholder='Pega aquí la nueva API Key' required>"
+    "<button type='submit'>Guardar API Key</button>"
+    "</form>"
+    "<div class='estado' id='estadoApi'>La clave se guarda en la memoria del dispositivo.</div>"
     "<div class='estado' id='estado'>Conectate a esta pagina mientras Sonnar IA configura la red.</div>"
     "<p>Si la conexion funciona, la red quedara guardada para los proximos encendidos.</p>"
     "</div><script>"
@@ -224,6 +268,19 @@ void wifiEnviarPaginaPrincipal() {
     "try{let r=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:datos});"
     "estado.textContent=await r.text();"
     "}catch(e){estado.textContent='Solicitud enviada. Espera y revisa el estado de conexion.';}"
+    "});"
+
+    "document.getElementById('formApi').addEventListener('submit',async e=>{"
+    "e.preventDefault();"
+    "const estadoApi=document.getElementById('estadoApi');"
+    "const apiKey=document.getElementById('apiKey').value.trim();"
+    "if(apiKey.length<20){estadoApi.textContent='La clave parece demasiado corta. Revisa el valor.';return;}"
+    "estadoApi.textContent='Guardando API Key...';"
+    "let datos=new URLSearchParams();datos.set('apiKey',apiKey);"
+    "try{let r=await fetch('/save-api',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:datos});"
+    "estadoApi.textContent=await r.text();"
+    "if(r.ok)document.getElementById('apiKey').value='';"
+    "}catch(e){estadoApi.textContent='No se pudo confirmar el guardado. Revisa la conexion e intenta otra vez.';}"
     "});"
 
     "setInterval(async()=>{"
@@ -429,6 +486,39 @@ bool iniciarPortalConfiguracionWiFi() {
 
     Serial.print("[WIFI] Probando nueva red: ");
     Serial.println(ssid);
+  });
+
+  // ---------------------------------------------------
+  // GUARDAR API KEY DE GEMINI (INDEPENDIENTE DEL WIFI)
+  // ---------------------------------------------------
+
+  servidorWiFi.on("/save-api", HTTP_POST, []() {
+    String nuevaClave = servidorWiFi.arg("apiKey");
+    nuevaClave.trim();
+
+    if (nuevaClave.length() < 20 || nuevaClave.length() > 200) {
+      servidorWiFi.send(
+        400,
+        "text/plain; charset=utf-8",
+        "La API Key no parece valida. Revisa que hayas copiado la clave completa."
+      );
+      return;
+    }
+
+    if (!guardarAPIKeyGemini(nuevaClave)) {
+      servidorWiFi.send(
+        500,
+        "text/plain; charset=utf-8",
+        "No se pudo guardar la API Key en memoria. Intenta nuevamente."
+      );
+      return;
+    }
+
+    servidorWiFi.send(
+      200,
+      "text/plain; charset=utf-8",
+      "API Key guardada correctamente. Sonnar IA la usara en los proximos escaneos."
+    );
   });
 
   // ---------------------------------------------------
