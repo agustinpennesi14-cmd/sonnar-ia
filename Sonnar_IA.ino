@@ -29,9 +29,8 @@ Menu principal en menu.ino
 // Wi-Fi persistente: credenciales en Preferences/NVS.
 // =====================================================
 
-// Las credenciales Wi-Fi se cargan desde Preferences (memoria NVS).
-// La clave anterior quedó expuesta: pegá aquí una NUEVA API key de Gemini.
-const char* API_KEY = "";
+// La API Key se carga desde Preferences/NVS en 05_WiFi.ino.
+String API_KEY = "";
 const char* GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 // =====================================================
@@ -130,6 +129,7 @@ unsigned long tiempoFinTTSConexion = 0;
 bool iniciarCamara();
 void iniciarAudio();
 bool conectarWiFi();
+bool cargarAPIKeyGemini();
 void gestionarPortalWiFi();
 bool iniciarPortalConfiguracionWiFi();
 void detenerPortalConfiguracionWiFi();
@@ -171,6 +171,9 @@ void setup() {
   // Inicializar audio.
   iniciarAudio();
   Serial.println("Audio inicializado.");
+
+  // Cargar la API Key de Gemini desde la memoria persistente.
+  cargarAPIKeyGemini();
 
   // Intentar conectar a la última red guardada.
   // Si no hay credenciales o la red falla, el sistema sigue arrancando
