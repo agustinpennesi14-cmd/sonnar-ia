@@ -31,7 +31,7 @@ Menu principal en menu.ino
 
 // Las credenciales Wi-Fi se cargan desde Preferences (memoria NVS).
 // La clave anterior quedó expuesta: pegá aquí una NUEVA API key de Gemini.
-const char* API_KEY = "AQ.Ab8RN6IazAIkj1yAUTWzVX32UT4c1S7aRs1OsG3lKPpboYfDtg";
+const char* API_KEY = "";
 const char* GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 // =====================================================
