@@ -83,6 +83,7 @@ String analizarConGemini(
   if (API_KEY.length() < 20) {
     Serial.println("[GEMINI] No hay una API Key configurada.");
     Serial.println("[GEMINI] Abri Sistema > Wi-Fi y cargala desde el portal.");
+    hablarTexto("Error de clave API, por favor, genere una nueva e intente nuevamente.");
     tiempoFinGemini = millis();
     return "";
   }
@@ -435,6 +436,30 @@ String analizarConGemini(
         millis();
       return "";
     }
+    // -------------------------------------------------
+    // ERROR DE CLAVE API
+    // -------------------------------------------------
+    String respuestaMinuscula = respuesta;
+    respuestaMinuscula.toLowerCase();
+    bool errorClaveAPI =
+      httpCode == 401 ||
+      respuestaMinuscula.indexOf("api_key_invalid") >= 0 ||
+      respuestaMinuscula.indexOf("api key not valid") >= 0 ||
+      respuestaMinuscula.indexOf("invalid api key") >= 0 ||
+      respuestaMinuscula.indexOf("api key expired") >= 0 ||
+      ((httpCode == 400 || httpCode == 403) &&
+       (respuestaMinuscula.indexOf("api key") >= 0 ||
+        respuestaMinuscula.indexOf("apikey") >= 0 ||
+        respuestaMinuscula.indexOf("permission_denied") >= 0));
+
+    if (errorClaveAPI) {
+      Serial.println("[GEMINI] Error de clave API. Revisar o generar una nueva clave.");
+      https.end();
+      hablarTexto("Error de clave API, por favor, genere una nueva e intente nuevamente.");
+      tiempoFinGemini = millis();
+      return "";
+    }
+
     // -------------------------------------------------
     // OTROS ERRORES
     // -------------------------------------------------
